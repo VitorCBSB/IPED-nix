@@ -4,8 +4,6 @@
 # IPED looks for the commands `rifiuti2` and `rifiuti-vista`. Since version 0.8
 # the INFO2 tool is installed as `rifiuti` instead of `rifiuti2`, so a
 # `rifiuti2` symlink is added for IPED.
-#
-# UNTESTED. If the 0.8.2 tag does not exist, try 0.8.1.
 { lib, stdenv, fetchFromGitHub, cmake, ninja, pkg-config, glib }:
 
 stdenv.mkDerivation rec {
