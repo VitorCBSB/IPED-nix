@@ -2,10 +2,6 @@
 #
 # The version MUST match the jep jar shipped in IPED's lib/ directory:
 #   ls <iped-release>/lib | grep -i jep        (IPED 4.3.1 ships jep-4.0.3.jar)
-#
-# UNTESTED. Jep 4.0.x is old, so it may not build against the newest Python;
-# tools.nix uses python311. If the build fails with C-API errors, try an older
-# Python that your nixpkgs still has (python310, python39).
 { lib, buildPythonPackage, fetchPypi, jdk }:
 
 buildPythonPackage rec {
