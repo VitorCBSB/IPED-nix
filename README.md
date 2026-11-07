@@ -82,7 +82,7 @@ Nix runs on any Linux distribution, and everything this flake needs (JDKs, Sleut
 3. Install:
 
    ```sh
-   nix profile install github:<user>/<repo>
+   nix profile install github:VitorCBSB/IPED-nix
    ```
 
 4. Make sure `~/.nix-profile/bin` is on your `PATH` (the installers normally arrange this), then run `iped` and `iped-search`.
