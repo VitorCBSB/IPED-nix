@@ -4,7 +4,7 @@
 
 stdenv.mkDerivation rec {
   pname = "iped";
-  version = "4.3.1";   # pick a release tag
+  version = "4.3.1";
 
   src = fetchzip {
     url = "https://github.com/sepinf-inc/IPED/releases/download/${version}/IPED-${version}_and_java_plugins.zip";
