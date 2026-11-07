@@ -49,7 +49,7 @@ The launcher does not change directory, so relative paths should resolve against
 Install into your user profile so the commands are on your `PATH`:
 
 ```sh
-nix profile install github:<user>/<repo>
+nix profile install github:VitorCBSB/IPED-nix
 ```
 
 On NixOS you can instead add the flake as an input of your system configuration and put `inputs.iped.packages.${pkgs.stdenv.hostPlatform.system}.default` in `environment.systemPackages` (or `home.packages` with home-manager).
