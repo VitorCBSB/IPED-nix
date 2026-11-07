@@ -7,12 +7,15 @@
 # Arguments:
 #   jdk      JDK used to build jep (only relevant with withJep = true)
 #   withJep  also build Jep + a Python for IPED's Python modules (see jep.nix)
+#   withWhisper  also put faster-whisper and gputil into that Python, for IPED's
+#                local Whisper audio transcription (CPU only; needs withJep)
 #
 # Returns:
 #   bin        packages whose bin/ goes on PATH
 #   lib        packages whose lib/ goes on LD_LIBRARY_PATH (JNA / JNI loaded libs)
-#   pythonPath directories for PYTHONPATH (non-empty only with withJep)
-{ pkgs, jdk ? pkgs.jdk11, withJep ? false }:
+#   pythonPath directories for PYTHONPATH (kept for compatibility; the wrapper
+#              does not have to use it)
+{ pkgs, jdk ? pkgs.jdk11, withJep ? false, withWhisper ? false }:
 let
   inherit (pkgs) lib;
 
@@ -55,14 +58,28 @@ let
     ++ lib.filter (p: p != null) (map libyalPkg libyalWanted);
 
   # IPED's Python modules go through Jep (Java Embedded Python): Python with
-  # the `jep` package, plus libjep.so on LD_LIBRARY_PATH and the site-packages
-  # on PYTHONPATH. The jep version must match the jep jar in IPED's lib/
+  # the `jep` package, plus libjep.so on LD_LIBRARY_PATH. The Python environment is on
+  # PATH; IPED appears to locate jep through it (inferred, not verified). The jep version must match the jep jar in IPED's lib/
   # directory (ls <iped-release>/lib | grep -i jep). See jep.nix.
+  # Python 3.11 worked for building jep 4.0.3, but current nixpkgs no longer
+  # supports parts of its package set (e.g. sphinx) on 3.11, which breaks
+  # packages such as beautifulsoup4. If jep fails to build on 3.12, go back to
+  # python311 and remove the extra modules from pythonModules below.
   python = pkgs.python312;
   jepPkg = python.pkgs.callPackage ./jep.nix { inherit jdk; };
   # Python packages that IPED's Python modules import. Add more here as the
   # IPED log reports "No module named '...'".
-  pythonModules = ps: [ jepPkg ps.beautifulsoup4 ];
+  #
+  # Whisper (withWhisper): IPED's WhisperTranscriptTask needs the Python
+  # libraries `faster_whisper` and `gputil` (IPED user manual). Models are
+  # downloaded from Hugging Face on first use, so the first run needs network
+  # access (or a pre-populated Hugging Face cache).
+  pyOpt = ps: name:
+    if builtins.hasAttr name ps then [ ps.${name} ]
+    else lib.warn "iped: Python package '${name}' not found in nixpkgs; local Whisper transcription will not work" [ ];
+  pythonModules = ps:
+    [ jepPkg ps.beautifulsoup4 ]
+    ++ lib.optionals withWhisper (pyOpt ps "faster-whisper" ++ pyOpt ps "gputil");
   jepEnv = python.withPackages pythonModules;
   jepSite = "${jepEnv}/${python.sitePackages}";
   jepLibs = pkgs.runCommand "jep-libs" { } ''
@@ -77,7 +94,10 @@ in
     ++ yal
     ++ lib.optional withJep jepEnv;
 
-  lib = yal ++ lib.optional withJep jepLibs;
+  # stdenv.cc.cc.lib (libstdc++): Vosk ships a prebuilt libvosk.so that IPED
+  # extracts at runtime; on NixOS it can only find libstdc++ through
+  # LD_LIBRARY_PATH. This is an assumption (not yet verified), and harmless.
+  lib = yal ++ lib.optional withJep jepLibs ++ [ pkgs.stdenv.cc.cc.lib ];
 
   pythonPath = lib.optional withJep jepSite;
 }

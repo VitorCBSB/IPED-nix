@@ -1,5 +1,5 @@
 {
-  description = "IPED (digital forensic tool) packaged for NixOS";
+  description = "IPED (digital forensic tool) packaged for Nix";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -9,12 +9,18 @@
       pkgs = import nixpkgs { inherit system; };
       lib = pkgs.lib;
 
+      # Plain JDK 11: builds Sleuthkit's Java bindings and runs IPED's
+      # command-line processing (no JavaFX needed there).
       jdk = pkgs.jdk11;
 
+      # Liberica "Full" JDK 11 (bundles JavaFX): used only by the analysis GUI.
       jdkFx = pkgs.callPackage ./liberica-jdk-full.nix { };
 
-      # Optional external tools (OCR, libyal parsers etc.)
-      tools = import ./tools.nix { inherit pkgs jdk; withJep = true; };
+      # Optional external tools (OCR, libyal parsers, RegRipper's perl, ...).
+      # See tools.nix; anything missing from nixpkgs is skipped with a warning.
+      # withWhisper = true adds faster-whisper to the Python environment (local
+      # Whisper audio transcription, CPU only; see the README).
+      tools = import ./tools.nix { inherit pkgs jdk; withJep = true; withWhisper = false; };
 
       sleuthkit-iped = pkgs.callPackage ./sleuthkit-iped.nix { inherit jdk; };
 
@@ -22,9 +28,10 @@
         inherit jdk sleuthkit-iped;
         toolsBin = tools.bin;
         toolsLib = tools.lib;
-        toolsPythonPath = tools.pythonPath;
       };
 
+      # Libraries the Liberica JDK dlopen()s at runtime. They are not declared
+      # dependencies of its .so files, so autoPatchelf can't wire them up.
       guiLibs = with pkgs; [
         fontconfig freetype gtk3 glib pango cairo gdk-pixbuf atk
         libGL alsa-lib
@@ -41,6 +48,8 @@
     in {
       packages.${system} = {
         inherit sleuthkit-iped iped iped-search;
+
+        # `nix build .` / `nix profile install .` gives both commands.
         default = pkgs.symlinkJoin {
           name = "iped-with-search";
           paths = [ iped iped-search ];
@@ -48,4 +57,3 @@
       };
     };
 }
-
