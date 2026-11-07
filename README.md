@@ -38,7 +38,7 @@ Packages exposed by the flake: `iped` (processing), `iped-search` (analysis GUI)
 ## Usage
 
 ```sh
-nix build github:<user>/<repo>                 # or: nix build . from a clone
+nix build github:VitorCBSB/IPED-nix                 # or: nix build . from a clone
 ./result/bin/iped --help
 ./result/bin/iped -d /path/to/evidence -o /path/to/output
 ./result/bin/iped-search /path/to/output       # open the processed case
