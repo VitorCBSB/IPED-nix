@@ -20,9 +20,9 @@
 
       iped = pkgs.callPackage ./iped.nix {
         inherit jdk sleuthkit-iped;
-	toolsBin = tools.bin;
-	toolsLib = tools.lib;
-	toolsPythonPath = tools.pythonPath;
+        toolsBin = tools.bin;
+        toolsLib = tools.lib;
+        toolsPythonPath = tools.pythonPath;
       };
 
       guiLibs = with pkgs; [
@@ -42,9 +42,9 @@
       packages.${system} = {
         inherit sleuthkit-iped iped iped-search;
         default = pkgs.symlinkJoin {
-	  name = "iped-with-search";
-	  paths = [ iped iped-search ];
-	};
+          name = "iped-with-search";
+          paths = [ iped iped-search ];
+        };
       };
     };
 }
