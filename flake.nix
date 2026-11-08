@@ -20,7 +20,7 @@
       # See tools.nix; anything missing from nixpkgs is skipped with a warning.
       # withWhisper = true adds faster-whisper to the Python environment (local
       # Whisper audio transcription, CPU only; see the README).
-      tools = import ./tools.nix { inherit pkgs jdk; withJep = true; withWhisper = false; };
+      tools = import ./tools.nix { inherit pkgs jdk; withJep = true; withWhisper = true; };
 
       sleuthkit-iped = pkgs.callPackage ./sleuthkit-iped.nix { inherit jdk; };
 
