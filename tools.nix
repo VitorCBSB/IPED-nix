@@ -83,7 +83,7 @@ let
   #
   # GPU (withWhisperGpu): faster-whisper only uses the GPU if CTranslate2 was
   # built with CUDA. nixpkgs builds it CPU-only by default, so it is rebuilt
-  # with CUDA and cuDNN here. UNTESTED: the override argument names have changed
+  # with CUDA and cuDNN here. Tested with the nixpkgs revision in flake.lock (RTX 3050). The override argument names have changed
   # between nixpkgs versions; if this fails with "unexpected argument", the
   # older pattern was faster-whisper.override { ctranslate2 = pkgs.ctranslate2.override { ... }; }.
   fasterWhisper = ps:

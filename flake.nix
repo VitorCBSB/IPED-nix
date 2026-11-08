@@ -7,7 +7,7 @@
     let
       system = "x86_64-linux";
 
-      # GPU transcription for local Whisper (NVIDIA only, EXPERIMENTAL, see the README).
+      # GPU transcription for local Whisper (NVIDIA only; tested on an RTX 3050, see the README).
       # Needs the unfree CUDA libraries and compiles CTranslate2 with CUDA locally,
       # which makes the build very slow. Off by default.
       withWhisperGpu = false;

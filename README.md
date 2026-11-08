@@ -14,6 +14,10 @@ Developed and tested on NixOS (x86_64-linux) with IPED 4.3.1.
 | Analysis GUI (`iped-search <case-folder>`) | Opens and runs; the startup log shows only the SuperFetch message listed below |
 | Optional external tools | All of IPED's startup self-checks pass except SuperFetch and DBX (see [Not covered yet](#not-covered-yet)) |
 | Python modules (Jep) | Load without errors with Python 3.12, jep 4.0.3 and `beautifulsoup4`; other IPED Python tasks may need more packages |
+| Audio transcription: Vosk (IPED's default) | Works. Tested with one minute of Portuguese speech in an `.ogg` file; `language = pt-BR` had to be set because the test machine's locale was English |
+| Audio transcription: Whisper (local, CPU) | Works (faster-whisper; the model is downloaded on first use). **Enabled by default in this flake, which makes builds much slower**; see [Audio transcription](#audio-transcription) |
+| Audio transcription: Whisper on an NVIDIA GPU | Works with `withWhisperGpu = true` (off by default). Tested on one machine: GeForce RTX 3050, driver 615.78.08; see [GPU](#gpu-nvidia) |
+| Audio transcription: Wav2Vec2 (local), Remote | Wav2Vec2 is not packaged; the Remote client has not been tested |
 | Parser output on real evidence | **Not yet validated.** Passing a startup self-check shows a tool runs, not that its output is correct |
 | Viewer previews (HTML, Office, video) | Not yet verified |
 | Other Linux distributions with Nix installed | **Untested**; expected to work with caveats, see [Using it on other distributions](#using-it-on-other-linux-distributions-ubuntu-etc) |
@@ -27,7 +31,7 @@ Developed and tested on NixOS (x86_64-linux) with IPED 4.3.1.
 | `iped.nix` | Packages the official IPED release zip plus a launcher script. Takes `toolsBin` and `toolsLib` from `tools.nix` |
 | `sleuthkit-iped.nix` | Builds the IPED-patched Sleuthkit fork with Java/JNI bindings |
 | `liberica-jdk-full.nix` | Liberica OpenJDK 11 "Full" (bundles JavaFX), used by the GUI only |
-| `tools.nix` | Optional external tools IPED looks for (OCR, libyal tools, Perl module, Python/Jep, ...) |
+| `tools.nix` | Optional external tools IPED looks for (OCR, libyal tools, Perl module, Python with Jep and Whisper, ...) |
 | `libyal.nix` | Small generic builder for libyal release tarballs, used by `tools.nix` for tools nixpkgs lacks |
 | `libyal-versions.nix` | Pinned libyal release tarballs |
 | `jep.nix` | Jep (Java Embedded Python) for IPED's Python modules |
@@ -38,7 +42,7 @@ Packages exposed by the flake: `iped` (processing), `iped-search` (analysis GUI)
 ## Usage
 
 ```sh
-nix build github:VitorCBSB/IPED-nix                 # or: nix build . from a clone
+nix build github:VitorCBSB/IPED-nix            # or: nix build . from a clone
 ./result/bin/iped --help
 ./result/bin/iped -d /path/to/evidence -o /path/to/output
 ./result/bin/iped-search /path/to/output       # open the processed case
@@ -55,6 +59,8 @@ nix profile install github:VitorCBSB/IPED-nix
 On NixOS you can instead add the flake as an input of your system configuration and put `inputs.iped.packages.${pkgs.stdenv.hostPlatform.system}.default` in `environment.systemPackages` (or `home.packages` with home-manager).
 
 If you work from a clone, remember `git add` for new files, because flakes only see git-tracked files. On the first build, `lib.fakeHash` placeholders (if any are left) make Nix print the real hash; paste it in and rebuild.
+
+**Build time:** with local Whisper transcription enabled (the default in `flake.nix`), the build pulls in large machine-learning dependencies and takes much longer than without it. If you do not need Whisper, set `withWhisper = false` in `flake.nix` (see [Audio transcription](#audio-transcription)).
 
 Processing and viewing are separate programs. `iped` writes an output folder; `iped-search` opens it. A processed case is portable and carries its own copy of the viewer, so `iped-search` is only a launcher that provides a suitable JDK, libraries and tools. **Both commands need the same external tools on their `PATH`** (OCR, MPlayer, ImageMagick, ...); both get them from `tools.nix`.
 
@@ -87,7 +93,7 @@ Nix runs on any Linux distribution, and everything this flake needs (JDKs, Sleut
 
 4. Make sure `~/.nix-profile/bin` is on your `PATH` (the installers normally arrange this), then run `iped` and `iped-search`.
 
-The first build compiles Sleuthkit and several small libraries and downloads the Liberica JDK and the IPED release; LibreOffice and most other tools come from the public binary cache. Expect several GB of disk use (LibreOffice is the bulk).
+The first build compiles Sleuthkit and several small libraries and downloads the Liberica JDK and the IPED release; LibreOffice and most other tools come from the public binary cache. Expect several GB of disk use (LibreOffice is the bulk). With Whisper enabled (the default) the build also needs the machine-learning libraries described under [Audio transcription](#audio-transcription), which takes much longer and needs more disk space.
 
 ### Caveats
 
@@ -138,7 +144,8 @@ IPED degrades gracefully: when a tool is missing, the matching parser is disable
 | Recycle Bin | rifiuti2 (`rifiuti2.nix`) |
 | Windows event logs, Prefetch, IE history, EDB / Edge | libyal tools: `libevtx`, `libevt`, `libscca`, `libmsiecf`, `libesedb`; `libpff` for Outlook OST |
 | Registry reports | RegRipper (bundled) with Perl's `Parse::Win32Registry` |
-| Python modules | Python 3.12 with `jep` (`jep.nix`) and `beautifulsoup4` on `PATH`, `libjep.so` on `LD_LIBRARY_PATH` |
+| Python modules | Python 3.12 with `jep` (`jep.nix`) and `beautifulsoup4` (plus `faster-whisper` and `gputil` with `withWhisper`) on `PATH`, `libjep.so` on `LD_LIBRARY_PATH` |
+| Audio transcription (Vosk) | libstdc++ on `LD_LIBRARY_PATH`, MPlayer for audio conversion |
 
 `tools.nix` skips any package that cannot be provided and prints an evaluation warning such as `iped: no libscca (nixpkgs or libyal-versions.nix); run ./update-libyal.sh`. To see which libyal-related packages your nixpkgs has:
 
@@ -170,19 +177,99 @@ IPED's Python modules run through Jep. The native jep must match the jep jar shi
 - **DBX (Outlook Express) mailboxes:** it is not known which external tool IPED's DBX parser expects, so it stays disabled.
 - **Optional image formats in Sleuthkit** (VMDK, VHD, LVM): this needs `libvmdk`, `libvhdi`, `libvslvm` and `libbfio` and a Sleuthkit rebuild with the matching `--with-*` flags.
 - **LibreOffice version:** IPED's wiki asks for LibreOffice 6; this flake uses whatever nixpkgs ships. No LibreOffice errors have been seen at startup, but document previews are not yet verified.
+- **Wav2Vec2 and GPU transcription, Remote server nodes:** see [Audio transcription](#audio-transcription).
 
 > **Forensic note:** a silently disabled parser means those artifact types are *absent* from your results, which is not the same as "none found". If you rely on IPED output in a report, record which parsers were active in that run (including the two above), and validate the tool in your own environment first.
+
+## Audio transcription
+
+IPED has several audio transcription backends, selected in `conf/AudioTranscriptConfig.txt`. Status with this packaging:
+
+| Backend | Status |
+|---|---|
+| **Vosk** (IPED's default) | Works. Tested once, with about a minute of Portuguese speech in an `.ogg` file. The small English and Portuguese models ship in the IPED release, and audio is converted with MPlayer. `tools.nix` also puts libstdc++ on `LD_LIBRARY_PATH` for Vosk's prebuilt native library (a precaution; it was not tested without it). |
+| **Whisper** (local, faster-whisper) | Works on CPU. Enabled by `withWhisper = true`, which is the default in `flake.nix` and adds `faster-whisper` and `gputil` to the Python environment. In the author's test the result was clearly more accurate than Vosk (an impression from one test, not a benchmark). |
+| **Wav2Vec2** (local) | **Not packaged.** It needs the `huggingsound` Python library and a PyTorch stack. |
+| **Remote** | The client side needs no extra packages, only configuration (below). It has **not been tested** here. The service side (discovery and transcription nodes) is not packaged. |
+| Azure, Google | Not covered (they need extra jars and credentials). |
+| GPU transcription (Whisper) | Works on NVIDIA GPUs with `withWhisperGpu = true` in `flake.nix` (off by default). It builds CTranslate2 with CUDA; the CUDA libraries are unfree and not in the public binary cache, so this compiles locally and is slow. Tested on one machine only; see [GPU](#gpu-nvidia). GPU for Wav2Vec2 would need a CUDA build of PyTorch and is not covered. |
+
+### Build cost of Whisper
+
+Whisper's Python dependencies include large machine-learning libraries (the build output showed PyTorch, among others). On the author's machine, enabling `withWhisper` made a clean build more than 30 times slower than before (about 3 minutes without it). If you do not need local Whisper, set `withWhisper = false` in `flake.nix` to get the fast build back. `withWhisperGpu = true` adds a local compile of CTranslate2 with CUDA on top of that.
+
+### GPU (NVIDIA)
+
+There is no fundamental obstacle to running Whisper on a GPU under Nix, but the pieces are not built that way by default. faster-whisper runs on CTranslate2, which nixpkgs builds CPU-only; GPU use needs it rebuilt with CUDA and cuDNN. Those libraries are unfree, so you need `allowUnfree`, and because the public binary cache has no binaries for them, CTranslate2 compiles on your machine.
+
+`withWhisperGpu = true` in `flake.nix` does the following:
+
+- allows unfree packages and restricts CUDA code to compute capability 8.6 (Ampere, for example the RTX 3050). Remove or edit `cudaCapabilities` if your machines have other GPUs; the build will then take longer.
+- rebuilds CTranslate2 and faster-whisper with CUDA and cuDNN (`tools.nix`).
+- puts `/run/opengl-driver/lib`, where NixOS exposes the NVIDIA driver libraries, on `LD_LIBRARY_PATH` for the wrappers.
+
+Then select the GPU in your `AudioTranscriptConfig.txt` overlay:
+
+```
+implementationClass = iped.engine.task.transcript.WhisperTranscriptTask
+device = gpu
+precision = float16
+```
+
+You need a working NVIDIA driver, new enough for the CUDA version nixpkgs uses. Mind the card's memory: larger Whisper models need more VRAM, and `int8` precision reduces memory use. This was tested on one machine, a GeForce RTX 3050 with driver 615.78.08, using the CUDA 13.x toolchain and CTranslate2 4.8.4 from the nixpkgs revision pinned in `flake.lock`. The override arguments in `tools.nix` have changed between nixpkgs versions, so a different revision may need adjustments, and other GPU generations need a different `cudaCapabilities` setting. To see whether the GPU is actually used, watch `nvidia-smi` while a case is being processed.
+
+### Enabling it
+
+1. Enable the module in `conf/IPEDConfig.txt`. Find the option name in your version with `grep -rn -i transcri ~/.local/share/iped/<version> --include=IPEDConfig.txt`.
+2. Copy `AudioTranscriptConfig.txt` from the working copy to `~/.config/iped/conf/` and edit it there (the launcher re-applies it on every start).
+
+Vosk:
+
+```
+implementationClass = iped.engine.task.transcript.VoskTranscriptTask
+language = pt-BR
+```
+
+Whisper (CPU):
+
+```
+implementationClass = iped.engine.task.transcript.WhisperTranscriptTask
+whisperModel = medium
+device = cpu
+precision = int8
+```
+
+Remote (client side):
+
+```
+implementationClass = iped.engine.task.transcript.RemoteTranscriptionTask
+remoteServiceAddress = <ip>:<port>
+```
+
+The IPED wiki still describes an older remote setup (`RemoteWav2Vec2TranscriptTask` and a `wav2vec2Service` parameter); follow the `AudioTranscriptConfig.txt` that ships with your IPED version.
+
+Notes:
+
+- Transcription happens during processing, so a case processed before enabling it has to be processed again (into a new output folder).
+- `language = auto` follows the `locale` set in `LocalConfig.txt`. If that is not your audio's language, set `language` explicitly (for example `pt-BR`). With Vosk this matters: it picks the model by language, and the test machine's English locale had to be overridden for Portuguese audio.
+- Whisper models are downloaded from Hugging Face on first use. In the author's test this showed up as heavy network use with no log lines. Offline machines need a pre-populated Hugging Face cache (by default under `~/.cache/huggingface`).
+- mp3 files are not transcribed by default. Add `audio/mpeg` to `mimesToProcess` to include them.
+- Transcriptions are stored in the `audio:transcription` property, with a confidence score in `audio:transcriptConfidence`.
+
+> **Forensic note:** automatic transcriptions can be wrong, and different backends give different results for the same audio. Treat them as leads, not as evidence, and check them against the recording.
 
 ## Known issues
 
 - **JavaFX and the analysis GUI.** The GUI needs JavaFX. What did not work: `jdk11.override { enableJavaFX = true; }` is refused by nixpkgs, and nixpkgs `openjfx17` cannot be used on the module path (its modular SDK has no `module-info.class`, and it is built without WebKit). What works: the Liberica Full JDK 11, packaged in `liberica-jdk-full.nix`, which bundles JavaFX. It is a prebuilt binary patched with `autoPatchelfHook`.
 - **Runtime libraries for the Liberica JDK.** The JDK `dlopen`s libraries such as fontconfig and GTK, and `autoPatchelfHook` does not wire up such libraries (`runtimeDependencies` did not help in our case). The `iped-search` script therefore sets `LD_LIBRARY_PATH` explicitly. Symptom if it is missing: a blank window and `Fontconfig head is null`.
 - **Missing tools in `iped-search`.** An early `Error testing MPLAYER!` message went away once `iped-search` got the same tool `PATH` as `iped`. The most likely cause is that the search app simply had no MPlayer on its `PATH`; this was not confirmed. Keep the two commands' tool lists in sync (both use `tools.bin`).
+- **WhatsApp parser messages in the search app.** After processing a case, `iped-search` printed `WhatsAppParser: HashTask is disabled` and `SHA-256 is disabled`, saying the parser needs them to link attachments to chats. They are not caused by a missing external tool. IPED's manual says SHA-256 must be enabled for WhatsApp attachments to be linked to their conversations. It has not been investigated whether these messages only come from the viewer or reflect the processing configuration, so check your hash settings before processing WhatsApp evidence.
 - **`JAVA_TOOL_OPTIONS` quirk.** If you experiment with JVM flags through `JAVA_TOOL_OPTIONS`, long options must use the `--option=value` form.
 - **Native libraries inside the Sleuthkit jar.** The jar bundles `libtsk_jni.so` and extracts it at runtime; the wrapper puts the Sleuthkit `lib/` directory on `LD_LIBRARY_PATH`. Look there first on `UnsatisfiedLinkError`.
 - **Deprecation warnings are downgraded.** The IPED Sleuthkit fork uses OpenSSL 3 functions that are deprecated but functional, so the build uses `-Wno-error=deprecated-declarations`.
 - **RPATH cleanup.** libtool leaves `/build/...` in the RPATH of installed `bin/*` programs, which Nix rejects, so `sleuthkit-iped.nix` rewrites them with `patchelf` in `preFixup`.
 - **Pinned upstream downloads can disappear.** libyal removes old GitHub release assets, which is why `libyal-versions.nix` is generated. The same can happen to any pinned URL (for example the Liberica tarball or the IPED release); consider mirroring them if you need long-term reproducibility.
+- **HTTP 504 while building the CUDA packages.** With `withWhisperGpu`, a build failed once because a patch download for the CUDA C++ headers package (`fix-make_tma_descriptor`) timed out on the host side with HTTP 504, which also failed everything that depends on it. Retrying later fixed it. Nix keeps whatever it already built, so a retry only repeats the failed fetch.
 
 ## Versions
 
@@ -194,6 +281,8 @@ IPED's Python modules run through Jep. The native jep must match the jep jar shi
 | JDK for processing | OpenJDK 11 |
 | JDK for the GUI | Liberica Full 11.0.33.0.3+7 |
 | Python / jep | Python 3.12 / jep 4.0.3 (must match IPED's jep jar) |
+| faster-whisper, gputil | whatever the pinned nixpkgs provides (see `flake.lock`) |
+| CUDA / CTranslate2 (`withWhisperGpu`) | CUDA 13.x and CTranslate2 4.8.4 from the pinned nixpkgs (see `flake.lock`) |
 | rifiuti2 | 0.8.2 |
 | libyal tools | newest downloadable release at generation time (see `libyal-versions.nix`) |
 
@@ -208,7 +297,7 @@ IPED's Python modules run through Jep. The native jep must match the jep jar shi
 
 ## Contributing
 
-Issues and pull requests are welcome, especially for testing on non-NixOS distributions, validating parser output against real evidence, and the tools that are still missing (SuperFetch, DBX). Please include your nixpkgs revision (or distribution and Nix version) and the exact error output.
+Issues and pull requests are welcome, especially for testing on non-NixOS distributions, validating parser output against real evidence, and the tools that are still missing (SuperFetch, DBX, Wav2Vec2). Please include your nixpkgs revision (or distribution and Nix version) and the exact error output.
 
 ## License
 
