@@ -8,14 +8,17 @@
 #   jdk      JDK used to build jep (only relevant with withJep = true)
 #   withJep  also build Jep + a Python for IPED's Python modules (see jep.nix)
 #   withWhisper  also put faster-whisper and gputil into that Python, for IPED's
-#                local Whisper audio transcription (CPU only; needs withJep)
+#                local Whisper audio transcription (needs withJep)
+#   withWhisperGpu  build CTranslate2 (the engine under faster-whisper) with CUDA
+#                   so Whisper can use an NVIDIA GPU (needs withWhisper; the flake
+#                   must allow unfree packages; see the README)
 #
 # Returns:
 #   bin        packages whose bin/ goes on PATH
 #   lib        packages whose lib/ goes on LD_LIBRARY_PATH (JNA / JNI loaded libs)
 #   pythonPath directories for PYTHONPATH (kept for compatibility; the wrapper
 #              does not have to use it)
-{ pkgs, jdk ? pkgs.jdk11, withJep ? false, withWhisper ? false }:
+{ pkgs, jdk ? pkgs.jdk11, withJep ? false, withWhisper ? false, withWhisperGpu ? false }:
 let
   inherit (pkgs) lib;
 
@@ -77,14 +80,39 @@ let
   pyOpt = ps: name:
     if builtins.hasAttr name ps then [ ps.${name} ]
     else lib.warn "iped: Python package '${name}' not found in nixpkgs; local Whisper transcription will not work" [ ];
+  #
+  # GPU (withWhisperGpu): faster-whisper only uses the GPU if CTranslate2 was
+  # built with CUDA. nixpkgs builds it CPU-only by default, so it is rebuilt
+  # with CUDA and cuDNN here. UNTESTED: the override argument names have changed
+  # between nixpkgs versions; if this fails with "unexpected argument", the
+  # older pattern was faster-whisper.override { ctranslate2 = pkgs.ctranslate2.override { ... }; }.
+  fasterWhisper = ps:
+    if withWhisperGpu then
+      ps.faster-whisper.override {
+        ctranslate2 = ps.ctranslate2.override {
+          ctranslate2-cpp = pkgs.ctranslate2.override { withCUDA = true; withCuDNN = true; };
+        };
+      }
+    else ps.faster-whisper;
   pythonModules = ps:
     [ jepPkg ps.beautifulsoup4 ]
-    ++ lib.optionals withWhisper (pyOpt ps "faster-whisper" ++ pyOpt ps "gputil");
+    ++ lib.optionals withWhisper (
+      (if builtins.hasAttr "faster-whisper" ps then [ (fasterWhisper ps) ]
+       else lib.warn "iped: Python package 'faster-whisper' not found in nixpkgs; local Whisper transcription will not work" [ ])
+      ++ pyOpt ps "gputil");
   jepEnv = python.withPackages pythonModules;
   jepSite = "${jepEnv}/${python.sitePackages}";
   jepLibs = pkgs.runCommand "jep-libs" { } ''
     mkdir -p $out/lib
     ln -s ${jepSite}/jep/*.so* $out/lib/
+  '';
+
+  # NixOS exposes the NVIDIA driver libraries (libcuda.so, ...) under
+  # /run/opengl-driver/lib. This tiny package only points at that directory so
+  # it can be put on LD_LIBRARY_PATH. Harmless on systems where it does not exist.
+  driverLibs = pkgs.runCommand "nixos-driver-libs" { } ''
+    mkdir -p $out
+    ln -s /run/opengl-driver/lib $out/lib
   '';
 in
 {
@@ -97,7 +125,9 @@ in
   # stdenv.cc.cc.lib (libstdc++): Vosk ships a prebuilt libvosk.so that IPED
   # extracts at runtime; on NixOS it can only find libstdc++ through
   # LD_LIBRARY_PATH. This is an assumption (not yet verified), and harmless.
-  lib = yal ++ lib.optional withJep jepLibs ++ [ pkgs.stdenv.cc.cc.lib ];
+  lib =
+    yal ++ lib.optional withJep jepLibs ++ [ pkgs.stdenv.cc.cc.lib ]
+    ++ lib.optional withWhisperGpu driverLibs;
 
   pythonPath = lib.optional withJep jepSite;
 }

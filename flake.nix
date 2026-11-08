@@ -6,7 +6,23 @@
   outputs = { self, nixpkgs }:
     let
       system = "x86_64-linux";
-      pkgs = import nixpkgs { inherit system; };
+
+      # GPU transcription for local Whisper (NVIDIA only, EXPERIMENTAL, see the README).
+      # Needs the unfree CUDA libraries and compiles CTranslate2 with CUDA locally,
+      # which makes the build very slow. Off by default.
+      withWhisperGpu = true;
+
+      pkgs = import nixpkgs {
+        inherit system;
+        config = nixpkgs.lib.optionalAttrs withWhisperGpu {
+          allowUnfree = true;
+          # Only build CUDA code for Ampere cards such as the RTX 3050 (compute
+          # capability 8.6). This shortens the build, but the result will not run
+          # on GPUs of other generations: remove this line (slower build) or list
+          # more capabilities if your machines differ.
+          cudaCapabilities = [ "8.6" ];
+        };
+      };
       lib = pkgs.lib;
 
       # Plain JDK 11: builds Sleuthkit's Java bindings and runs IPED's
@@ -19,8 +35,10 @@
       # Optional external tools (OCR, libyal parsers, RegRipper's perl, ...).
       # See tools.nix; anything missing from nixpkgs is skipped with a warning.
       # withWhisper = true adds faster-whisper to the Python environment (local
-      # Whisper audio transcription, CPU only; see the README).
-      tools = import ./tools.nix { inherit pkgs jdk; withJep = true; withWhisper = true; };
+      # Whisper audio transcription, CPU only; see the README). It pulls in large
+      # machine-learning dependencies and makes builds much slower; set it to
+      # false if you do not need Whisper.
+      tools = import ./tools.nix { inherit pkgs jdk; withJep = true; withWhisper = true; inherit withWhisperGpu; };
 
       sleuthkit-iped = pkgs.callPackage ./sleuthkit-iped.nix { inherit jdk; };
 
