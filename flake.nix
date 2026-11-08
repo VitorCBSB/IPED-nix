@@ -10,7 +10,7 @@
       # GPU transcription for local Whisper (NVIDIA only, EXPERIMENTAL, see the README).
       # Needs the unfree CUDA libraries and compiles CTranslate2 with CUDA locally,
       # which makes the build very slow. Off by default.
-      withWhisperGpu = true;
+      withWhisperGpu = false;
 
       pkgs = import nixpkgs {
         inherit system;
