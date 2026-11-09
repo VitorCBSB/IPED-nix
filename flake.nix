@@ -40,7 +40,21 @@
       # false if you do not need Whisper.
       tools = import ./tools.nix { inherit pkgs jdk; withJep = true; withWhisper = true; inherit withWhisperGpu; };
 
-      sleuthkit-iped = pkgs.callPackage ./sleuthkit-iped.nix { inherit jdk; };
+      # Libraries that give Sleuthkit more disk-image formats: VMDK, VHD, LVM (libyal)
+      # and AFF. nixpkgs packages are preferred; otherwise the release tarballs
+      # pinned in libyal-versions.nix are built. Anything unavailable is null, which
+      # only leaves that image format unsupported.
+      libyalLocal = import ./libyal-versions.nix (pkgs.callPackage ./libyal.nix { });
+      imageLib = name: pkgs.${name} or libyalLocal.${name} or null;
+
+      sleuthkit-iped = pkgs.callPackage ./sleuthkit-iped.nix {
+        inherit jdk;
+        libbfio = imageLib "libbfio";
+        libvmdk = imageLib "libvmdk";
+        libvhdi = imageLib "libvhdi";
+        libvslvm = imageLib "libvslvm";
+        afflib = pkgs.afflib or null;
+      };
 
       iped = pkgs.callPackage ./iped.nix {
         inherit jdk sleuthkit-iped;

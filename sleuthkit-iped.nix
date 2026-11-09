@@ -1,5 +1,6 @@
 { lib, stdenv, fetchFromGitHub, fetchurl, autoreconfHook, pkg-config
-, ant, jdk, openssl, zlib, libewf-legacy, sqlite }:
+, ant, jdk, openssl, zlib, libewf-legacy, sqlite
+, libbfio ? null, libvmdk ? null, libvhdi ? null, libvslvm ? null, afflib ? null }:
 
 let
   mvn = path: hash: fetchurl {
@@ -23,6 +24,7 @@ let
     (mvn "com/mchange/c3p0/0.12.0/c3p0-0.12.0.jar" "sha256-TYWn1GQ6It9+niGhWeAi3kYlMHJ0Q+yD0ZAyHrMFhR0=")
     (mvn "com/mchange/mchange-commons-java/0.4.0/mchange-commons-java-0.4.0.jar" "sha256-/YjjhaON93ARd7B241BIqEHcXfERjGsthgu6CMQbwLY=")
     (mvn "com/zaxxer/SparseBitSet/1.3/SparseBitSet-1.3.jar" "sha256-92uFrbDAByGuJnt8/eTaf3HTEhzCFgyfwAwMifjFPIo=")
+    # sqlite-jdbc (version from ivy.xml)
     (mvn "org/xerial/sqlite-jdbc/3.49.1.0/sqlite-jdbc-3.49.1.0.jar" "sha256-XIYJ0so0HeuMb3F3iXS1ukmVx9MtfHyJ2TkqPnLDkpE=")
   ];
 
@@ -48,7 +50,12 @@ stdenv.mkDerivation {
   };
 
   nativeBuildInputs = [ autoreconfHook pkg-config ant jdk ];
-  buildInputs = [ openssl zlib libewf-legacy sqlite ];
+  # libbfio, libvmdk, libvhdi, libvslvm and afflib add VMDK, VHD, LVM and AFF image
+  # support. configure detects them automatically; check the "Features" summary in
+  # the build log (nix log .#sleuthkit-iped) to see which were picked up.
+  buildInputs =
+    [ openssl zlib libewf-legacy sqlite ]
+    ++ lib.filter (p: p != null) [ libbfio libvmdk libvhdi libvslvm afflib ];
 
   configureFlags = [ "--enable-java" "--enable-offline" ];
   JAVA_HOME = jdk.home;
