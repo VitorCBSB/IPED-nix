@@ -12,6 +12,10 @@
       # which makes the build very slow. Off by default.
       withWhisperGpu = false;
 
+      # Face recognition (IPED's Python task: face_recognition, dlib, OpenCV).
+      # UNTESTED; IPED's task may require numpy 1.x, see tools.nix. Off by default.
+      withFaceRecognition = false;
+
       pkgs = import nixpkgs {
         inherit system;
         config = nixpkgs.lib.optionalAttrs withWhisperGpu {
@@ -38,18 +42,22 @@
       # Whisper audio transcription, CPU only; see the README). It pulls in large
       # machine-learning dependencies and makes builds much slower; set it to
       # false if you do not need Whisper.
-      tools = import ./tools.nix { inherit pkgs jdk; withJep = true; withWhisper = true; inherit withWhisperGpu; };
+      tools = import ./tools.nix { inherit pkgs jdk; libagdb = libyalPkgs.libagdb; withJep = true; withWhisper = true; inherit withWhisperGpu withFaceRecognition; };
 
       # Libraries that give Sleuthkit more disk-image formats: VMDK, VHD, LVM (libyal)
       # and AFF. nixpkgs packages are preferred; otherwise the release tarballs
       # pinned in libyal-versions.nix are built. Anything unavailable is null, which
       # only leaves that image format unsupported.
+      # libyal libraries built from pinned git tags (libyal/ directory)
+      libyalPkgs = pkgs.callPackage ./libyal { };
+
+      # libyal libraries from release tarballs (libyal-versions.nix, see update-libyal.sh)
       libyalLocal = import ./libyal-versions.nix (pkgs.callPackage ./libyal.nix { });
       imageLib = name: pkgs.${name} or libyalLocal.${name} or null;
 
       sleuthkit-iped = pkgs.callPackage ./sleuthkit-iped.nix {
         inherit jdk;
-        libbfio = imageLib "libbfio";
+        libbfio = libyalPkgs.libbfio;
         libvmdk = imageLib "libvmdk";
         libvhdi = imageLib "libvhdi";
         libvslvm = imageLib "libvslvm";

@@ -11,8 +11,8 @@ Developed and tested on NixOS (x86_64-linux) with IPED 4.3.1.
 | Part | State |
 |---|---|
 | Processing evidence (`iped -d ... -o ...`) | Works |
-| Analysis GUI (`iped-search <case-folder>`) | Opens and runs; the startup log shows only the SuperFetch message listed below |
-| Optional external tools | All of IPED's startup self-checks pass except SuperFetch and DBX (see [Not covered yet](#not-covered-yet)) |
+| Analysis GUI (`iped-search <case-folder>`) | Opens and runs |
+| Optional external tools | All of IPED's startup self-checks passed except SuperFetch (since then packaged via `libagdb`, not yet re-checked) and DBX (see [Not covered yet](#not-covered-yet)) |
 | Python modules (Jep) | Load without errors with Python 3.12, jep 4.0.3 and `beautifulsoup4`; other IPED Python tasks may need more packages |
 | Audio transcription: Vosk (IPED's default) | Works. Tested with one minute of Portuguese speech in an `.ogg` file; `language = pt-BR` had to be set because the test machine's locale was English |
 | Audio transcription: Whisper (local, CPU) | Works (faster-whisper; the model is downloaded on first use). **Enabled by default in this flake, which makes builds much slower**; see [Audio transcription](#audio-transcription) |
@@ -33,6 +33,7 @@ Developed and tested on NixOS (x86_64-linux) with IPED 4.3.1.
 | `liberica-jdk-full.nix` | Liberica OpenJDK 11 "Full" (bundles JavaFX), used by the GUI only |
 | `tools.nix` | Optional external tools IPED looks for (OCR, libyal tools, Perl module, Python with Jep and Whisper, ...) |
 | `libyal.nix` | Small generic builder for libyal release tarballs, used by `tools.nix` for tools nixpkgs lacks |
+| `libyal/` | libyal libraries built from pinned git tags: libagdb and everything it depends on (libbfio, libcerror, libuna, ...) |
 | `libyal-versions.nix` | Pinned libyal release tarballs |
 | `jep.nix` | Jep (Java Embedded Python) for IPED's Python modules |
 | `rifiuti2.nix` | rifiuti2 (Windows Recycle Bin parsers), built from source |
@@ -142,7 +143,7 @@ IPED degrades gracefully: when a tool is missing, the matching parser is disable
 | Office document rendering | LibreOffice (`SAL_USE_VCLPLUGIN` is set in the wrapper) |
 | Graph layout | graphviz |
 | Recycle Bin | rifiuti2 (`rifiuti2.nix`) |
-| Windows event logs, Prefetch, IE history, EDB / Edge | libyal tools: `libevtx`, `libevt`, `libscca`, `libmsiecf`, `libesedb`; `libpff` for Outlook OST |
+| Windows event logs, Prefetch, SuperFetch, IE history, EDB / Edge | libyal tools: `libevtx`, `libevt`, `libscca`, `libagdb`, `libmsiecf`, `libesedb`; `libpff` for Outlook OST |
 | Registry reports | RegRipper (bundled) with Perl's `Parse::Win32Registry` |
 | Python modules | Python 3.12 with `jep` (`jep.nix`) and `beautifulsoup4` (plus `faster-whisper` and `gputil` with `withWhisper`) on `PATH`, `libjep.so` on `LD_LIBRARY_PATH` |
 | Audio transcription (Vosk) | libstdc++ on `LD_LIBRARY_PATH`, MPlayer for audio conversion |
@@ -163,6 +164,17 @@ For `libesedb`, `libevtx`, `libevt`, `libscca` and `libmsiecf`, `tools.nix` uses
 
 The script picks the newest release whose tarball can still be downloaded for each project and records its checksum. Re-run it whenever a libyal download fails.
 
+### libyal libraries built from git (`libyal/`)
+
+libagdb (Windows SuperFetch, `agdbinfo`) has no release tarballs, only git. libyal's git trees expect `./synclibs.sh` to download their dependencies at build time, which is neither possible in the Nix sandbox nor reproducible. So `libyal/` packages libagdb and each of its dependencies (libcerror, libcthreads, libcnotify, libclocale, libcsplit, libcdatetime, libfdatetime, libuna, libcdata, libfcache, libfwnt, libfdata, libcfile, libcpath, libbfio) separately, each pinned by tag and hash. `libyal/default.nix` wires them together by name. The same libbfio is also used for Sleuthkit's VMDK, VHD and LVM support.
+
+Notes for adding or updating a library:
+
+- `synclibs.sh`'s `LOCAL_LIBS` is not a reliable dependency list (libuna also needs libcnotify and libcdatetime although it lists only libcerror); trust the errors from `configure`.
+- libuna's command-line tools (`unatools`) are removed, because they need libcfile, which itself needs libuna.
+- Each package deletes the references to the bundled copies of its dependencies from `Makefile.am` and `configure.ac`, since the separate packages replace them.
+- `libyal/fill-libyal-pins.sh` sets the newest date tag and hash of a library.
+
 ### Recycle Bin (rifiuti2)
 
 IPED looks for the commands `rifiuti2` and `rifiuti-vista`. The `rifiuti` package in nixpkgs did not satisfy IPED's checks, so `rifiuti2.nix` builds upstream rifiuti2 (CMake). Since version 0.8 its INFO2 tool installs as `rifiuti`, so the package adds a `rifiuti2` symlink.
@@ -173,7 +185,6 @@ IPED's Python modules run through Jep. The native jep must match the jep jar shi
 
 ### Not covered yet
 
-- **Windows SuperFetch** (`libagdb` / `agdbinfo`): libyal publishes no downloadable release tarball for it, so it is not packaged. IPED logs `Error testing SuperFetchParser` at every start; this is expected.
 - **DBX (Outlook Express) mailboxes:** it is not known which external tool IPED's DBX parser expects, so it stays disabled.
 - **Optional image formats in Sleuthkit** (VMDK, VHD, LVM): this needs `libvmdk`, `libvhdi`, `libvslvm` and `libbfio` and a Sleuthkit rebuild with the matching `--with-*` flags.
 - **LibreOffice version:** IPED's wiki asks for LibreOffice 6; this flake uses whatever nixpkgs ships. No LibreOffice errors have been seen at startup, but document previews are not yet verified.
@@ -297,7 +308,7 @@ Notes:
 
 ## Contributing
 
-Issues and pull requests are welcome, especially for testing on non-NixOS distributions, validating parser output against real evidence, and the tools that are still missing (SuperFetch, DBX, Wav2Vec2). Please include your nixpkgs revision (or distribution and Nix version) and the exact error output.
+Issues and pull requests are welcome, especially for testing on non-NixOS distributions, validating parser output against real evidence, and the tools that are still missing (DBX, Wav2Vec2). Please include your nixpkgs revision (or distribution and Nix version) and the exact error output.
 
 ## License
 

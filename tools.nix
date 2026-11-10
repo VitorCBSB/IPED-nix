@@ -12,13 +12,20 @@
 #   withWhisperGpu  build CTranslate2 (the engine under faster-whisper) with CUDA
 #                   so Whisper can use an NVIDIA GPU (needs withWhisper; the flake
 #                   must allow unfree packages; see the README)
+#   withFaceRecognition  also add face_recognition, dlib and OpenCV for IPED's face
+#                        recognition task (needs withJep; UNTESTED, see the note in
+#                        the Python section about numpy 2)
+#
+#   libagdb  the libagdb package (provides agdbinfo for IPED's SuperFetch parser)
 #
 # Returns:
 #   bin        packages whose bin/ goes on PATH
 #   lib        packages whose lib/ goes on LD_LIBRARY_PATH (JNA / JNI loaded libs)
 #   pythonPath directories for PYTHONPATH (kept for compatibility; the wrapper
 #              does not have to use it)
-{ pkgs, jdk ? pkgs.jdk11, withJep ? false, withWhisper ? false, withWhisperGpu ? false }:
+{ pkgs, jdk ? pkgs.jdk11, libagdb ? null
+, withJep ? false, withWhisper ? false, withWhisperGpu ? false
+, withFaceRecognition ? false }:
 let
   inherit (pkgs) lib;
 
@@ -48,8 +55,8 @@ let
   # release assets, so pins go stale and must be regenerated from time to time).
   mkLibyal = pkgs.callPackage ./libyal.nix { };
   libyalLocal = import ./libyal-versions.nix mkLibyal;
-  # libagdb (SuperFetch, agdbinfo) is deliberately missing: upstream publishes
-  # no downloadable release tarball for it.
+  # libagdb (Windows SuperFetch, agdbinfo) has no release tarballs; it is built from
+  # a pinned git tag in libyal/ and passed in by the flake.
   libyalWanted = [ "libesedb" "libevtx" "libevt" "libscca" "libmsiecf" ];
 
   libyalPkg = name:
@@ -58,7 +65,8 @@ let
 
   yal =
     lib.optional (pkgs ? libpff) pkgs.libpff
-    ++ lib.filter (p: p != null) (map libyalPkg libyalWanted);
+    ++ lib.filter (p: p != null) (map libyalPkg libyalWanted)
+    ++ lib.optional (libagdb != null) libagdb;
 
   # IPED's Python modules go through Jep (Java Embedded Python): Python with
   # the `jep` package, plus libjep.so on LD_LIBRARY_PATH. The Python environment is on
@@ -70,6 +78,14 @@ let
   # python311 and remove the extra modules from pythonModules below.
   python = pkgs.python312;
   jepPkg = python.pkgs.callPackage ./jep.nix { inherit jdk; };
+  #
+  # Face recognition (withFaceRecognition): IPED's task is a Python script that
+  # imports face_recognition, cv2 and numpy. IPED's documentation (third-party
+  # mirror) says the script refuses numpy 2 ("numpy version must be <2.x"), but
+  # nixpkgs no longer ships numpy 1 (numpy_1 was removed). Check what your IPED
+  # release really does before relying on this:
+  #   grep -n -i numpy <working copy>/scripts/tasks/FaceRecognitionTask.py
+  # This only adds the packages (with the default numpy 2). UNTESTED.
   # Python packages that IPED's Python modules import. Add more here as the
   # IPED log reports "No module named '...'".
   #
@@ -79,7 +95,7 @@ let
   # access (or a pre-populated Hugging Face cache).
   pyOpt = ps: name:
     if builtins.hasAttr name ps then [ ps.${name} ]
-    else lib.warn "iped: Python package '${name}' not found in nixpkgs; local Whisper transcription will not work" [ ];
+    else lib.warn "iped: Python package '${name}' not found in nixpkgs; the IPED feature that needs it will not work" [ ];
   #
   # GPU (withWhisperGpu): faster-whisper only uses the GPU if CTranslate2 was
   # built with CUDA. nixpkgs builds it CPU-only by default, so it is rebuilt
@@ -99,7 +115,9 @@ let
     ++ lib.optionals withWhisper (
       (if builtins.hasAttr "faster-whisper" ps then [ (fasterWhisper ps) ]
        else lib.warn "iped: Python package 'faster-whisper' not found in nixpkgs; local Whisper transcription will not work" [ ])
-      ++ pyOpt ps "gputil");
+      ++ pyOpt ps "gputil")
+    ++ lib.optionals withFaceRecognition (
+      pyOpt ps "face-recognition" ++ pyOpt ps "dlib" ++ pyOpt ps "opencv4" ++ [ ps.numpy ]);
   jepEnv = python.withPackages pythonModules;
   jepSite = "${jepEnv}/${python.sitePackages}";
   jepLibs = pkgs.runCommand "jep-libs" { } ''
