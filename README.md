@@ -12,7 +12,8 @@ Developed and tested on NixOS (x86_64-linux) with IPED 4.3.1.
 |---|---|
 | Processing evidence (`iped -d ... -o ...`) | Works |
 | Analysis GUI (`iped-search <case-folder>`) | Opens and runs |
-| Optional external tools | All of IPED's startup self-checks passed except SuperFetch (since then packaged via `libagdb`, not yet re-checked) and DBX (see [Not covered yet](#not-covered-yet)) |
+| Optional external tools | All of IPED's startup self-checks passed except SuperFetch (since then packaged via `libagdb`; the build works, the startup check has not been re-run) and DBX (see [Not covered yet](#not-covered-yet)) |
+| Disk image formats | E01 (via `libewf-legacy`) plus VMDK, VHD, LVM and AFF (Sleuthkit is built with libbfio, libvmdk, libvhdi, libvslvm and afflib). The build works; none of these formats has been tested with a real image |
 | Python modules (Jep) | Load without errors with Python 3.12, jep 4.0.3 and `beautifulsoup4`; other IPED Python tasks may need more packages |
 | Audio transcription: Vosk (IPED's default) | Works. Tested with one minute of Portuguese speech in an `.ogg` file; `language = pt-BR` had to be set because the test machine's locale was English |
 | Audio transcription: Whisper (local, CPU) | Works (faster-whisper; the model is downloaded on first use). **Enabled by default in this flake, which makes builds much slower**; see [Audio transcription](#audio-transcription) |
@@ -32,9 +33,7 @@ Developed and tested on NixOS (x86_64-linux) with IPED 4.3.1.
 | `sleuthkit-iped.nix` | Builds the IPED-patched Sleuthkit fork with Java/JNI bindings |
 | `liberica-jdk-full.nix` | Liberica OpenJDK 11 "Full" (bundles JavaFX), used by the GUI only |
 | `tools.nix` | Optional external tools IPED looks for (OCR, libyal tools, Perl module, Python with Jep and Whisper, ...) |
-| `libyal.nix` | Small generic builder for libyal release tarballs, used by `tools.nix` for tools nixpkgs lacks |
-| `libyal/` | libyal libraries built from pinned git tags: libagdb and everything it depends on (libbfio, libcerror, libuna, ...) |
-| `libyal-versions.nix` | Pinned libyal release tarballs |
+| `libyal/` | The libyal libraries and tools (libesedb, libevtx, libevt, libscca, libmsiecf, libagdb, libvmdk, libvhdi, libvslvm and everything they depend on), each built from a git tag pinned by hash. Also holds `libyal-closure.py` and `fill-libyal-pins.sh`, two helper scripts |
 | `jep.nix` | Jep (Java Embedded Python) for IPED's Python modules |
 | `rifiuti2.nix` | rifiuti2 (Windows Recycle Bin parsers), built from source |
 
@@ -148,32 +147,21 @@ IPED degrades gracefully: when a tool is missing, the matching parser is disable
 | Python modules | Python 3.12 with `jep` (`jep.nix`) and `beautifulsoup4` (plus `faster-whisper` and `gputil` with `withWhisper`) on `PATH`, `libjep.so` on `LD_LIBRARY_PATH` |
 | Audio transcription (Vosk) | libstdc++ on `LD_LIBRARY_PATH`, MPlayer for audio conversion |
 
-`tools.nix` skips any package that cannot be provided and prints an evaluation warning such as `iped: no libscca (nixpkgs or libyal-versions.nix); run ./update-libyal.sh`. To see which libyal-related packages your nixpkgs has:
+`tools.nix` skips any package that cannot be provided and prints an evaluation warning such as `iped: no libscca in libyal/ or nixpkgs; the parser that needs it stays disabled`.
 
-```sh
-nix eval --impure --expr 'let p = (builtins.getFlake "nixpkgs").legacyPackages.x86_64-linux; in builtins.listToAttrs (map (n: { name = n; value = builtins.hasAttr n p; }) [ "libesedb" "libpff" "libevtx" "libevt" "libscca" "libmsiecf" "rifiuti2" "libvmdk" "libvhdi" "libbfio" ])'
-```
+### libyal libraries and tools (`libyal/`)
 
-### libyal tools
+IPED's artifact parsers call command-line tools from the libyal projects: `esedbexport` (libesedb), `evtxexport` (libevtx), `evtexport` (libevt), `sccainfo` (libscca), `msiecfexport` (libmsiecf) and `agdbinfo` (libagdb, for SuperFetch). `pffexport` (libpff) comes from nixpkgs. Sleuthkit also uses libyal's libbfio, libvmdk, libvhdi and libvslvm for VMDK, VHD and LVM images.
 
-For `libesedb`, `libevtx`, `libevt`, `libscca` and `libmsiecf`, `tools.nix` uses the nixpkgs package when there is one and otherwise builds the upstream release tarball with `libyal.nix`. libyal **deletes old release assets** from GitHub, so pinned versions go stale and start returning 404. `libyal-versions.nix` is therefore generated, not hand-written:
-
-```sh
-./update-libyal.sh > libyal-versions.nix
-```
-
-The script picks the newest release whose tarball can still be downloaded for each project and records its checksum. Re-run it whenever a libyal download fails.
-
-### libyal libraries built from git (`libyal/`)
-
-libagdb (Windows SuperFetch, `agdbinfo`) has no release tarballs, only git. libyal's git trees expect `./synclibs.sh` to download their dependencies at build time, which is neither possible in the Nix sandbox nor reproducible. So `libyal/` packages libagdb and each of its dependencies (libcerror, libcthreads, libcnotify, libclocale, libcsplit, libcdatetime, libfdatetime, libuna, libcdata, libfcache, libfwnt, libfdata, libcfile, libcpath, libbfio) separately, each pinned by tag and hash. `libyal/default.nix` wires them together by name. The same libbfio is also used for Sleuthkit's VMDK, VHD and LVM support.
+libyal publishes release tarballs for only some of its projects and deletes old ones, and its git trees expect `./synclibs.sh` to download their dependencies at build time (the latest tag of each). That is neither possible in the Nix sandbox nor reproducible. So `libyal/` packages each of these libraries and all of their libyal dependencies (34 packages) separately, every one built from a git tag pinned by hash, and `libyal/default.nix` wires them together by name. Nothing depends on a libyal release tarball or on a download at build time.
 
 Notes for adding or updating a library:
 
-- `synclibs.sh`'s `LOCAL_LIBS` is not a reliable dependency list (libuna also needs libcnotify and libcdatetime although it lists only libcerror); trust the errors from `configure`.
+- Each package deletes the references to the bundled copies of its dependencies from `Makefile.am` and `configure.ac`, because the separate packages replace them.
+- `synclibs.sh`'s `LOCAL_LIBS` is not a reliable dependency list: libuna also needs libcnotify and libcdatetime although it lists only libcerror. Trust the errors from `configure`.
 - libuna's command-line tools (`unatools`) are removed, because they need libcfile, which itself needs libuna.
-- Each package deletes the references to the bundled copies of its dependencies from `Makefile.am` and `configure.ac`, since the separate packages replace them.
-- `libyal/fill-libyal-pins.sh` sets the newest date tag and hash of a library.
+- libfuse is not provided, so the mount tools (`vmdkmount` and similar) are skipped. IPED does not use them.
+- `libyal/libyal-closure.py` maps the dependency closure of libraries from `synclibs.sh` and `configure.ac`, and `libyal/fill-libyal-pins.sh` sets the newest date tag and hash in a package file.
 
 ### Recycle Bin (rifiuti2)
 
@@ -186,7 +174,6 @@ IPED's Python modules run through Jep. The native jep must match the jep jar shi
 ### Not covered yet
 
 - **DBX (Outlook Express) mailboxes:** it is not known which external tool IPED's DBX parser expects, so it stays disabled.
-- **Optional image formats in Sleuthkit** (VMDK, VHD, LVM): this needs `libvmdk`, `libvhdi`, `libvslvm` and `libbfio` and a Sleuthkit rebuild with the matching `--with-*` flags.
 - **LibreOffice version:** IPED's wiki asks for LibreOffice 6; this flake uses whatever nixpkgs ships. No LibreOffice errors have been seen at startup, but document previews are not yet verified.
 - **Wav2Vec2 and GPU transcription, Remote server nodes:** see [Audio transcription](#audio-transcription).
 
@@ -279,7 +266,7 @@ Notes:
 - **Native libraries inside the Sleuthkit jar.** The jar bundles `libtsk_jni.so` and extracts it at runtime; the wrapper puts the Sleuthkit `lib/` directory on `LD_LIBRARY_PATH`. Look there first on `UnsatisfiedLinkError`.
 - **Deprecation warnings are downgraded.** The IPED Sleuthkit fork uses OpenSSL 3 functions that are deprecated but functional, so the build uses `-Wno-error=deprecated-declarations`.
 - **RPATH cleanup.** libtool leaves `/build/...` in the RPATH of installed `bin/*` programs, which Nix rejects, so `sleuthkit-iped.nix` rewrites them with `patchelf` in `preFixup`.
-- **Pinned upstream downloads can disappear.** libyal removes old GitHub release assets, which is why `libyal-versions.nix` is generated. The same can happen to any pinned URL (for example the Liberica tarball or the IPED release); consider mirroring them if you need long-term reproducibility.
+- **Pinned upstream downloads can disappear.** libyal's deletion of old release assets broke an earlier version of this packaging, which is why the libyal libraries are now built from git tags. The Liberica tarball, the IPED release and the Maven jars used for Sleuthkit are still fetched from third-party URLs, and a git tag can in principle be moved or deleted too. Consider mirroring them if you need long-term reproducibility.
 - **HTTP 504 while building the CUDA packages.** With `withWhisperGpu`, a build failed once because a patch download for the CUDA C++ headers package (`fix-make_tma_descriptor`) timed out on the host side with HTTP 504, which also failed everything that depends on it. Retrying later fixed it. Nix keeps whatever it already built, so a retry only repeats the failed fetch.
 
 ## Versions
@@ -295,7 +282,7 @@ Notes:
 | faster-whisper, gputil | whatever the pinned nixpkgs provides (see `flake.lock`) |
 | CUDA / CTranslate2 (`withWhisperGpu`) | CUDA 13.x and CTranslate2 4.8.4 from the pinned nixpkgs (see `flake.lock`) |
 | rifiuti2 | 0.8.2 |
-| libyal tools | newest downloadable release at generation time (see `libyal-versions.nix`) |
+| libyal libraries and tools | the git tags pinned in `libyal/` |
 
 ## Updating to a new IPED release
 
@@ -304,7 +291,7 @@ Notes:
 3. If the Sleuthkit tag changes, compare the fork's `bindings/java/ivy.xml` and `case-uco/java/ivy.xml` with the jar lists in `sleuthkit-iped.nix`.
 4. Check whether the zip layout changed (`installPhase` in `iped.nix` depends on it).
 5. Check the jep jar version in the new release's `lib/` and update `jep.nix` to match.
-6. Re-run `./update-libyal.sh > libyal-versions.nix` if any libyal download fails.
+6. To update a libyal library, run `libyal/fill-libyal-pins.sh <name>` (newest date tag and hash) in that directory, and rebuild.
 
 ## Contributing
 
