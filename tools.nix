@@ -16,14 +16,14 @@
 #                        recognition task (needs withJep; UNTESTED, see the note in
 #                        the Python section about numpy 2)
 #
-#   libagdb  the libagdb package (provides agdbinfo for IPED's SuperFetch parser)
+#   libyalPkgs  the scope from libyal/ (libyal libraries built from pinned git tags)
 #
 # Returns:
 #   bin        packages whose bin/ goes on PATH
 #   lib        packages whose lib/ goes on LD_LIBRARY_PATH (JNA / JNI loaded libs)
 #   pythonPath directories for PYTHONPATH (kept for compatibility; the wrapper
 #              does not have to use it)
-{ pkgs, jdk ? pkgs.jdk11, libagdb ? null
+{ pkgs, jdk ? pkgs.jdk11, libyalPkgs ? { }
 , withJep ? false, withWhisper ? false, withWhisperGpu ? false
 , withFaceRecognition ? false }:
 let
@@ -55,18 +55,15 @@ let
   # release assets, so pins go stale and must be regenerated from time to time).
   mkLibyal = pkgs.callPackage ./libyal.nix { };
   libyalLocal = import ./libyal-versions.nix mkLibyal;
-  # libagdb (Windows SuperFetch, agdbinfo) has no release tarballs; it is built from
-  # a pinned git tag in libyal/ and passed in by the flake.
-  libyalWanted = [ "libesedb" "libevtx" "libevt" "libscca" "libmsiecf" ];
+  libyalWanted = [ "libesedb" "libevtx" "libevt" "libscca" "libmsiecf" "libagdb" ];
 
   libyalPkg = name:
-    pkgs.${name} or libyalLocal.${name} or
+    libyalPkgs.${name} or pkgs.${name} or libyalLocal.${name} or
       (lib.warn "iped: no ${name} (nixpkgs or libyal-versions.nix); run ./update-libyal.sh" null);
 
   yal =
     lib.optional (pkgs ? libpff) pkgs.libpff
-    ++ lib.filter (p: p != null) (map libyalPkg libyalWanted)
-    ++ lib.optional (libagdb != null) libagdb;
+    ++ lib.filter (p: p != null) (map libyalPkg libyalWanted);
 
   # IPED's Python modules go through Jep (Java Embedded Python): Python with
   # the `jep` package, plus libjep.so on LD_LIBRARY_PATH. The Python environment is on

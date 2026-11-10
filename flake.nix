@@ -42,7 +42,7 @@
       # Whisper audio transcription, CPU only; see the README). It pulls in large
       # machine-learning dependencies and makes builds much slower; set it to
       # false if you do not need Whisper.
-      tools = import ./tools.nix { inherit pkgs jdk; libagdb = libyalPkgs.libagdb; withJep = true; withWhisper = true; inherit withWhisperGpu withFaceRecognition; };
+      tools = import ./tools.nix { inherit pkgs jdk; inherit libyalPkgs; withJep = true; withWhisper = true; inherit withWhisperGpu withFaceRecognition; };
 
       # Libraries that give Sleuthkit more disk-image formats: VMDK, VHD, LVM (libyal)
       # and AFF. nixpkgs packages are preferred; otherwise the release tarballs
@@ -53,11 +53,12 @@
 
       # libyal libraries from release tarballs (libyal-versions.nix, see update-libyal.sh)
       libyalLocal = import ./libyal-versions.nix (pkgs.callPackage ./libyal.nix { });
-      imageLib = name: pkgs.${name} or libyalLocal.${name} or null;
+      # precedence: git-built libyal/ package, then nixpkgs, then release tarball
+      imageLib = name: libyalPkgs.${name} or pkgs.${name} or libyalLocal.${name} or null;
 
       sleuthkit-iped = pkgs.callPackage ./sleuthkit-iped.nix {
         inherit jdk;
-        libbfio = libyalPkgs.libbfio;
+        libbfio = imageLib "libbfio";
         libvmdk = imageLib "libvmdk";
         libvhdi = imageLib "libvhdi";
         libvslvm = imageLib "libvslvm";
