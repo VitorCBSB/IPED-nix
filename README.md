@@ -33,7 +33,7 @@ Developed and tested on NixOS (x86_64-linux) with IPED 4.3.1.
 | `sleuthkit-iped.nix` | Builds the IPED-patched Sleuthkit fork with Java/JNI bindings |
 | `liberica-jdk-full.nix` | Liberica OpenJDK 11 "Full" (bundles JavaFX), used by the GUI only |
 | `tools.nix` | Optional external tools IPED looks for (OCR, libyal tools, Perl module, Python with Jep and Whisper, ...) |
-| `libyal/` | The libyal libraries and tools (libesedb, libevtx, libevt, libscca, libmsiecf, libagdb, libvmdk, libvhdi, libvslvm and everything they depend on), each built from a git tag pinned by hash. Also holds `libyal-closure.py` and `fill-libyal-pins.sh`, two helper scripts |
+| `libyal/` | The libyal libraries and tools (libesedb, libevtx, libevt, libscca, libmsiecf, libagdb, libvmdk, libvhdi, libvslvm and everything they depend on), each built from a git tag pinned by hash. |
 | `jep.nix` | Jep (Java Embedded Python) for IPED's Python modules |
 | `rifiuti2.nix` | rifiuti2 (Windows Recycle Bin parsers), built from source |
 
