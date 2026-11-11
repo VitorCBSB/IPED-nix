@@ -12,9 +12,6 @@
 #   withWhisperGpu  build CTranslate2 (the engine under faster-whisper) with CUDA
 #                   so Whisper can use an NVIDIA GPU (needs withWhisper; the flake
 #                   must allow unfree packages; see the README)
-#   withFaceRecognition  also add face_recognition, dlib and OpenCV for IPED's face
-#                        recognition task (needs withJep; UNTESTED, see the note in
-#                        the Python section about numpy 2)
 #
 #   libyalPkgs  the scope from libyal/: the libyal libraries and tools, built from
 #               pinned git tags
@@ -25,8 +22,7 @@
 #   pythonPath directories for PYTHONPATH (kept for compatibility; the wrapper
 #              does not have to use it)
 { pkgs, jdk ? pkgs.jdk11, libyalPkgs ? { }
-, withJep ? false, withWhisper ? false, withWhisperGpu ? false
-, withFaceRecognition ? false }:
+, withJep ? false, withWhisper ? false, withWhisperGpu ? false }:
 let
   inherit (pkgs) lib;
 
@@ -72,14 +68,6 @@ let
   # python311 and remove the extra modules from pythonModules below.
   python = pkgs.python312;
   jepPkg = python.pkgs.callPackage ./jep.nix { inherit jdk; };
-  #
-  # Face recognition (withFaceRecognition): IPED's task is a Python script that
-  # imports face_recognition, cv2 and numpy. IPED's documentation (third-party
-  # mirror) says the script refuses numpy 2 ("numpy version must be <2.x"), but
-  # nixpkgs no longer ships numpy 1 (numpy_1 was removed). Check what your IPED
-  # release really does before relying on this:
-  #   grep -n -i numpy <working copy>/scripts/tasks/FaceRecognitionTask.py
-  # This only adds the packages (with the default numpy 2). UNTESTED.
   # Python packages that IPED's Python modules import. Add more here as the
   # IPED log reports "No module named '...'".
   #
@@ -109,9 +97,7 @@ let
     ++ lib.optionals withWhisper (
       (if builtins.hasAttr "faster-whisper" ps then [ (fasterWhisper ps) ]
        else lib.warn "iped: Python package 'faster-whisper' not found in nixpkgs; local Whisper transcription will not work" [ ])
-      ++ pyOpt ps "gputil")
-    ++ lib.optionals withFaceRecognition (
-      pyOpt ps "face-recognition" ++ pyOpt ps "dlib" ++ pyOpt ps "opencv4" ++ [ ps.numpy ]);
+      ++ pyOpt ps "gputil");
   jepEnv = python.withPackages pythonModules;
   jepSite = "${jepEnv}/${python.sitePackages}";
   jepLibs = pkgs.runCommand "jep-libs" { } ''

@@ -12,10 +12,6 @@
       # which makes the build very slow. Off by default.
       withWhisperGpu = false;
 
-      # Face recognition (IPED's Python task: face_recognition, dlib, OpenCV).
-      # UNTESTED; IPED's task may require numpy 1.x, see tools.nix. Off by default.
-      withFaceRecognition = false;
-
       pkgs = import nixpkgs {
         inherit system;
         config = nixpkgs.lib.optionalAttrs withWhisperGpu {
@@ -42,7 +38,7 @@
       # Whisper audio transcription, CPU only; see the README). It pulls in large
       # machine-learning dependencies and makes builds much slower; set it to
       # false if you do not need Whisper.
-      tools = import ./tools.nix { inherit pkgs jdk; inherit libyalPkgs; withJep = true; withWhisper = true; inherit withWhisperGpu withFaceRecognition; };
+      tools = import ./tools.nix { inherit pkgs jdk; inherit libyalPkgs; withJep = true; withWhisper = true; inherit withWhisperGpu; };
 
       # The libyal libraries and tools, built from pinned git tags (libyal/ directory).
       libyalPkgs = pkgs.callPackage ./libyal { };
