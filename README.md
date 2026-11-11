@@ -12,7 +12,7 @@ Developed and tested on NixOS (x86_64-linux) with IPED 4.3.1.
 |---|---|
 | Processing evidence (`iped -d ... -o ...`) | Works |
 | Analysis GUI (`iped-search <case-folder>`) | Opens and runs |
-| Optional external tools | All of IPED's startup self-checks passed except SuperFetch (since then packaged via `libagdb`; the build works, the startup check has not been re-run) and DBX (see [Not covered yet](#not-covered-yet)) |
+| Optional external tools and plugins | IPED's startup log shows no missing-tool errors (SuperFetch and DBX included). Parser output has not been checked against real evidence |
 | Disk image formats | E01 (via `libewf-legacy`) plus VMDK, VHD, LVM and AFF (Sleuthkit is built with libbfio, libvmdk, libvhdi, libvslvm and afflib). The build works; none of these formats has been tested with a real image |
 | Python modules (Jep) | Load without errors with Python 3.12, jep 4.0.3 and `beautifulsoup4`; other IPED Python tasks may need more packages |
 | Audio transcription: Vosk (IPED's default) | Works. Tested with one minute of Portuguese speech in an `.ogg` file; `language = pt-BR` had to be set because the test machine's locale was English |
@@ -29,7 +29,7 @@ Developed and tested on NixOS (x86_64-linux) with IPED 4.3.1.
 | File | Purpose |
 |---|---|
 | `flake.nix` | Wires everything together and defines the packages |
-| `iped.nix` | Packages the official IPED release zip plus a launcher script. Takes `toolsBin` and `toolsLib` from `tools.nix` |
+| `iped.nix` | Packages the official IPED release zip (including its optional plugin jars) plus a launcher script. Takes `toolsBin` and `toolsLib` from `tools.nix` |
 | `sleuthkit-iped.nix` | Builds the IPED-patched Sleuthkit fork with Java/JNI bindings |
 | `liberica-jdk-full.nix` | Liberica OpenJDK 11 "Full" (bundles JavaFX), used by the GUI only |
 | `tools.nix` | Optional external tools IPED looks for (OCR, libyal tools, Perl module, Python with Jep and Whisper, ...) |
@@ -110,9 +110,9 @@ Please open an issue with your distribution, Nix version and the exact error if 
 
 IPED keeps `conf/`, `profiles/`, `LocalConfig.txt` and more next to `iped.jar` and does not follow the XDG specification. `/nix/store` is read-only, so `iped` is a wrapper around a small launcher script that, on every start:
 
-1. Copies the immutable release from the store to `${XDG_DATA_HOME:-~/.local/share}/iped/<version>/` if that directory does not exist yet (the writable working copy IPED runs from).
+1. Copies the immutable release from the store to `${XDG_DATA_HOME:-~/.local/share}/iped/<version>/` (the writable working copy IPED runs from) if that directory does not exist yet or if the package has changed. A stamp file in the working copy records the store path of the release that was copied.
 2. Copies the contents of `${XDG_CONFIG_HOME:-~/.config}/iped/` **over** the working copy, if that directory exists. Put overrides there, mirroring IPED's layout, e.g. `~/.config/iped/conf/ExternalParsers.xml`.
-3. Rewrites `tskJarPath` in `LocalConfig.txt` to point at the Nix-built Sleuthkit jar.
+3. Rewrites `LocalConfig.txt`: it adds the final newline that the release's file lacks, points `tskJarPath` at the Nix-built Sleuthkit jar, and sets `pluginFolder = plugins` (see [Plugins](#plugins-dbx-telegram-named-entity-recognition)).
 4. Runs `java -jar iped.jar` with a `PATH` and `LD_LIBRARY_PATH` that include the required tools (set by the wrapper around the launcher).
 
 Consequences worth knowing:
@@ -120,6 +120,8 @@ Consequences worth knowing:
 - Building the package does **not** create anything in your home directory. The working copy appears on first run.
 - Files in `~/.config/iped/` always win. If an edit made directly in `~/.local/share/iped/<version>/` keeps disappearing, a copy in `~/.config/iped/` is overwriting it.
 - Each IPED version gets its own working copy; delete old ones whenever you like.
+- When the package changes (a new store path), the release is copied over the working copy again, so edits made directly in the working copy are lost. Keep persistent changes in `~/.config/iped/`.
+- The release's `LocalConfig.txt` does not end with a newline. An earlier launcher appended its `tskJarPath` line directly, which glued it onto the last line (`pluginFolder = ../plugins/tskJarPath = ...`). That made the first run of a fresh working copy fail with `You must set tskJarPath on LocalConfig.txt!` and left the plugin folder path invalid.
 
 ## Why this is not a one-liner
 
@@ -146,6 +148,7 @@ IPED degrades gracefully: when a tool is missing, the matching parser is disable
 | Registry reports | RegRipper (bundled) with Perl's `Parse::Win32Registry` |
 | Python modules | Python 3.12 with `jep` (`jep.nix`) and `beautifulsoup4` (plus `faster-whisper` and `gputil` with `withWhisper`) on `PATH`, `libjep.so` on `LD_LIBRARY_PATH` |
 | Audio transcription (Vosk) | libstdc++ on `LD_LIBRARY_PATH`, MPlayer for audio conversion |
+| Optional IPED plugins | DBX decoder, Telegram decoder and Stanford CoreNLP jars from the release's `plugins/` directory |
 
 `tools.nix` skips any package that cannot be provided and prints an evaluation warning such as `iped: no libscca in libyal/ or nixpkgs; the parser that needs it stays disabled`.
 
@@ -171,13 +174,22 @@ IPED looks for the commands `rifiuti2` and `rifiuti-vista`. The `rifiuti` packag
 
 IPED's Python modules run through Jep. The native jep must match the jep jar shipped in IPED's `lib/` directory (`ls <release>/lib | grep -i jep`; IPED 4.3.1 ships `jep-4.0.3.jar`). `jep.nix` builds jep 4.0.3 against Python 3.12; it did not need changes beyond exporting `JAVA_HOME` through `env`. Python 3.11 also built jep, but current nixpkgs no longer supports parts of its package set (for example sphinx), which broke `beautifulsoup4`. IPED's Python tasks import further packages: when the log reports `No module named '...'`, add the package to `pythonModules` in `tools.nix`. The wrapper does not set `PYTHONPATH`; IPED appears to locate jep through the `python` on `PATH` (inferred from the fact that it works, not verified). To switch Jep off, pass `withJep = false` to `tools.nix` in `flake.nix`.
 
+### Plugins (DBX, Telegram, named-entity recognition)
+
+The IPED release zip has a second top-level directory, `plugins/`, with optional jars whose licenses (GPL) rule out bundling them in IPED itself:
+
+- `java-dbx-1.1-p6.jar` decodes Outlook Express DBX mailboxes. IPED's `OutlookDBXParser` loads its implementation class by name and logs `DBX parser not found` if that fails, so no external tool is involved.
+- `telegram-decoder-impl-1.0.14.jar` is the implementation behind the Telegram parser.
+- `stanford-corenlp-3.8.0.jar` enables named-entity recognition; its models must be downloaded separately.
+
+`iped.nix` installs them into the `plugins/` folder inside IPED's root, and the launcher sets `pluginFolder = plugins` in `LocalConfig.txt` (IPED's default is `../plugins/`, relative to its root). The jars are fetched from the official release at build time; this repository does not redistribute them. After the fix, the `DBX parser not found` message disappeared; DBX parsing itself has not been tried with a real `.dbx` file, and neither has the Telegram decoder.
+
 ### Not covered yet
 
-- **DBX (Outlook Express) mailboxes:** it is not known which external tool IPED's DBX parser expects, so it stays disabled.
 - **LibreOffice version:** IPED's wiki asks for LibreOffice 6; this flake uses whatever nixpkgs ships. No LibreOffice errors have been seen at startup, but document previews are not yet verified.
 - **Wav2Vec2 and GPU transcription, Remote server nodes:** see [Audio transcription](#audio-transcription).
 
-> **Forensic note:** a silently disabled parser means those artifact types are *absent* from your results, which is not the same as "none found". If you rely on IPED output in a report, record which parsers were active in that run (including the two above), and validate the tool in your own environment first.
+> **Forensic note:** a silently disabled parser means those artifact types are *absent* from your results, which is not the same as "none found". If you rely on IPED output in a report, record which parsers were active in that run, and validate the tool in your own environment first.
 
 ## Audio transcription
 
@@ -295,7 +307,7 @@ Notes:
 
 ## Contributing
 
-Issues and pull requests are welcome, especially for testing on non-NixOS distributions, validating parser output against real evidence, and the tools that are still missing (DBX, Wav2Vec2). Please include your nixpkgs revision (or distribution and Nix version) and the exact error output.
+Issues and pull requests are welcome, especially for testing on non-NixOS distributions, validating parser output against real evidence, and the tools that are still missing (Wav2Vec2). Changes to the launcher should be tested with a fresh working copy (delete `~/.local/share/iped/<version>/`) and then a second run, since the first run once behaved differently from the second. Please include your nixpkgs revision (or distribution and Nix version) and the exact error output.
 
 ## License
 
