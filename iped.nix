@@ -32,14 +32,16 @@ stdenv.mkDerivation rec {
 
     # (Re)copy the release into the working copy when it does not exist yet or when
     # the package has changed (the stamp holds the store path of the copied release).
+    # -f: files copied earlier from the (read-only) store keep mode 0444, which would
+    # otherwise make the copy fail with "Permission denied".
     stamp="$data/.installed"
     if [ "$(cat "$stamp" 2>/dev/null)" != "$share" ]; then
       mkdir -p "$data"
-      cp -r --no-preserve=mode,ownership "$share"/. "$data"/
+      cp -rf --no-preserve=mode,ownership "$share"/. "$data"/
       echo "$share" > "$stamp"
     fi
     if [ -d "$cfg" ]; then
-      cp -r --no-preserve=mode,ownership "$cfg"/. "$data"/
+      cp -rf --no-preserve=mode,ownership "$cfg"/. "$data"/
     fi
     sed -i '/^#\?[[:space:]]*tskJarPath/d' "$data/LocalConfig.txt" 2>/dev/null || true
     echo "tskJarPath = @tskjar@" >> "$data/LocalConfig.txt"
