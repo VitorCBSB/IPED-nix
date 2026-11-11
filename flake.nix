@@ -48,7 +48,6 @@
       sleuthkit-iped = pkgs.callPackage ./sleuthkit-iped.nix {
         inherit jdk;
         inherit (libyalPkgs) libbfio libvmdk libvhdi libvslvm;
-        afflib = pkgs.afflib or null;
       };
 
       iped = pkgs.callPackage ./iped.nix {
