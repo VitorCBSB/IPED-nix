@@ -18,16 +18,25 @@ stdenv.mkDerivation rec {
     mkdir -p $out/share/iped $out/libexec $out/bin
     cp -r iped-${version}/. $out/share/iped
 
+    # The zip also has a top-level plugins/ directory with optional GPL-licensed jars
+    # (DBX decoder, Telegram decoder, Stanford CoreNLP). IPED loads them from the
+    # plugins/ folder inside its own root.
+    mkdir -p $out/share/iped/plugins
+    cp -r plugins/. $out/share/iped/plugins/
+
     cat > $out/libexec/iped-launcher <<'EOF'
     set -eu
     share="@share@"
     data="''${XDG_DATA_HOME:-$HOME/.local/share}/iped/@version@"
     cfg="''${XDG_CONFIG_HOME:-$HOME/.config}/iped"
 
-    if [ ! -e "$data/.installed" ]; then
+    # (Re)copy the release into the working copy when it does not exist yet or when
+    # the package has changed (the stamp holds the store path of the copied release).
+    stamp="$data/.installed"
+    if [ "$(cat "$stamp" 2>/dev/null)" != "$share" ]; then
       mkdir -p "$data"
       cp -r --no-preserve=mode,ownership "$share"/. "$data"/
-      touch "$data/.installed"
+      echo "$share" > "$stamp"
     fi
     if [ -d "$cfg" ]; then
       cp -r --no-preserve=mode,ownership "$cfg"/. "$data"/
