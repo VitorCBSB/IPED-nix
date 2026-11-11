@@ -43,8 +43,14 @@ stdenv.mkDerivation rec {
     if [ -d "$cfg" ]; then
       cp -rf --no-preserve=mode,ownership "$cfg"/. "$data"/
     fi
-    sed -i '/^#\?[[:space:]]*tskJarPath/d' "$data/LocalConfig.txt" 2>/dev/null || true
-    echo "tskJarPath = @tskjar@" >> "$data/LocalConfig.txt"
+    # The release's LocalConfig.txt does not end with a newline, so a plain append would
+    # glue the new text onto its last line (pluginFolder = ../plugins/tskJarPath = ...).
+    sed -i -e '$a\' "$data/LocalConfig.txt" 2>/dev/null || true
+    sed -i -e '/^#\?[[:space:]]*tskJarPath/d' -e '/^[[:space:]]*pluginFolder/d' "$data/LocalConfig.txt" 2>/dev/null || true
+    {
+      echo "tskJarPath = @tskjar@"
+      echo "pluginFolder = plugins"
+    } >> "$data/LocalConfig.txt"
 
     exec @java@/bin/java -jar "$data/iped.jar" "$@"
     EOF
