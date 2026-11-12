@@ -12,15 +12,15 @@ Developed and tested on NixOS (x86_64-linux) with IPED 4.3.1.
 |---|---|
 | Processing evidence (`iped -d ... -o ...`) | Works |
 | Analysis GUI (`iped-search <case-folder>`) | Opens and runs |
-| Optional external tools and plugins | IPED's startup log shows no missing-tool errors (SuperFetch and DBX included). Parser output has not been checked against real evidence |
+| Optional external tools and plugins | IPED's startup log shows no missing-tool errors (SuperFetch and DBX included). The output of the Windows-artifact parsers has not been checked against real evidence |
 | Disk image formats | E01 (via `libewf-legacy`) plus VMDK, VHD, LVM and AFF (Sleuthkit is built with libbfio, libvmdk, libvhdi, libvslvm and afflib). The build works; none of these formats has been tested with a real image |
 | Python modules (Jep) | Load without errors with Python 3.12, jep 4.0.3 and `beautifulsoup4`; other IPED Python tasks may need more packages |
 | Audio transcription: Vosk (IPED's default) | Works. Tested with one minute of Portuguese speech in an `.ogg` file; `language = pt-BR` had to be set because the test machine's locale was English |
 | Audio transcription: Whisper (local, CPU) | Works (faster-whisper; the model is downloaded on first use). **Enabled by default in this flake, which makes builds much slower**; see [Audio transcription](#audio-transcription) |
 | Audio transcription: Whisper on an NVIDIA GPU | Works with `withWhisperGpu = true` (off by default). Tested on one machine: GeForce RTX 3050, driver 615.78.08; see [GPU](#gpu-nvidia) |
 | Audio transcription: Wav2Vec2 (local), Remote | Wav2Vec2 is not packaged; the Remote client has not been tested |
-| Parser output on real evidence | **Not yet validated.** Passing a startup self-check shows a tool runs, not that its output is correct |
-| Viewer previews (HTML, Office, video) | Not yet verified |
+| Real-world test | The author processed a 10 GB folder of real files (PDF, JPEG, JPG, MP3, M4A, DOC, DOCX, OGG and others) and everything worked. **Not yet tried on real data:** the Windows-artifact parsers (event logs, Prefetch, SuperFetch, registry, Recycle Bin, IE/Edge history), disk images (E01, VMDK, VHD, LVM, AFF), `.dbx` mailboxes and Telegram databases. This is one person's test, not a systematic validation of parser output |
+| Viewer previews | Checked by the author for the file types of the real-world test (PDF, JPEG, JPG, MP3, M4A, DOC, DOCX, OGG): they worked. HTML and video previews have not been checked specifically |
 | Other Linux distributions with Nix installed | **Untested**; expected to work with caveats, see [Using it on other distributions](#using-it-on-other-linux-distributions-ubuntu-etc) |
 | aarch64, macOS | Not supported (the flake is `x86_64-linux` only) |
 
@@ -186,7 +186,7 @@ The IPED release zip has a second top-level directory, `plugins/`, with optional
 
 ### Not covered yet
 
-- **LibreOffice version:** IPED's wiki asks for LibreOffice 6; this flake uses whatever nixpkgs ships. No LibreOffice errors have been seen at startup, but document previews are not yet verified.
+- **LibreOffice version:** IPED's wiki asks for LibreOffice 6; this flake uses whatever nixpkgs ships. No LibreOffice errors have been seen at startup, and DOC and DOCX previews worked in the author's test.
 - **Wav2Vec2 and GPU transcription, Remote server nodes:** see [Audio transcription](#audio-transcription).
 
 > **Forensic note:** a silently disabled parser means those artifact types are *absent* from your results, which is not the same as "none found". If you rely on IPED output in a report, record which parsers were active in that run, and validate the tool in your own environment first.
@@ -307,7 +307,7 @@ Notes:
 
 ## Contributing
 
-Issues and pull requests are welcome, especially for testing on non-NixOS distributions, validating parser output against real evidence, and the tools that are still missing (Wav2Vec2). Changes to the launcher should be tested with a fresh working copy (delete `~/.local/share/iped/<version>/`) and then a second run, since the first run once behaved differently from the second. Please include your nixpkgs revision (or distribution and Nix version) and the exact error output.
+Issues and pull requests are welcome, especially for testing on non-NixOS distributions, validating the Windows-artifact parsers and disk-image formats against real evidence, and the tools that are still missing (Wav2Vec2). Changes to the launcher should be tested with a fresh working copy (delete `~/.local/share/iped/<version>/`) and then a second run, since the first run once behaved differently from the second. Please include your nixpkgs revision (or distribution and Nix version) and the exact error output.
 
 ## License
 
