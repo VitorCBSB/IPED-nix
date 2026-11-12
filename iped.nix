@@ -30,6 +30,12 @@ stdenv.mkDerivation rec {
     data="''${XDG_DATA_HOME:-$HOME/.local/share}/iped/@version@"
     cfg="''${XDG_CONFIG_HOME:-$HOME/.config}/iped"
 
+    # MPlayer creates its configuration directory on its first run, and IPED's own
+    # MPlayer test fails until that has happened (seen with a fresh home directory).
+    if [ ! -e "$HOME/.mplayer" ] && [ ! -e "''${XDG_CONFIG_HOME:-$HOME/.config}/mplayer" ]; then
+      mplayer </dev/null >/dev/null 2>&1 || true
+    fi
+
     # (Re)copy the release into the working copy when it does not exist yet or when
     # the package has changed (the stamp holds the store path of the copied release).
     # -f: files copied earlier from the (read-only) store keep mode 0444, which would

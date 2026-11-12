@@ -68,6 +68,11 @@
         set -eu
         cd "''${1:?usage: iped-search <case-output-folder>}"
         export PATH=${jdkFx}/bin:${lib.makeBinPath tools.bin}:$PATH
+        # MPlayer creates its configuration directory on its first run; IPED's MPlayer
+        # test fails until then (seen with a fresh home directory).
+        if [ ! -e "$HOME/.mplayer" ] && [ ! -e "''${XDG_CONFIG_HOME:-$HOME/.config}/mplayer" ]; then
+          mplayer </dev/null >/dev/null 2>&1 || true
+        fi
         export LD_LIBRARY_PATH=${lib.makeLibraryPath (guiLibs ++ tools.lib)}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
         exec java -jar iped/lib/iped-search-app.jar
       '';
